@@ -12,6 +12,7 @@ import {
   useRouter,
 } from 'expo-router'
 import { supabase } from '../../lib/supabase'
+import { safeBack } from '../../lib/utils'
 import { Ionicons } from '@expo/vector-icons'
 
 type Player = {
@@ -54,6 +55,9 @@ export default function MatchDetail() {
     useState(true)
 
   const [userId, setUserId] =
+    useState<string | null>(null)
+
+  const [toast, setToast] =
     useState<string | null>(null)
 
   useEffect(() => {
@@ -149,6 +153,16 @@ export default function MatchDetail() {
       (p) => p.user_id === userId
     )
 
+  const showToast = (
+    message: string
+  ) => {
+    setToast(message)
+
+    setTimeout(() => {
+      setToast(null)
+    }, 2500)
+  }
+
   const joinMatch = async () => {
     if (!userId || !match)
       return
@@ -163,14 +177,19 @@ export default function MatchDetail() {
     )
       return
 
-    await supabase
-      .from('match_players')
-      .insert([
-        {
-          match_id: matchId,
-          user_id: userId,
-        },
-      ])
+    const { error } =
+      await supabase
+        .from('match_players')
+        .insert([
+          {
+            match_id: matchId,
+            user_id: userId,
+          },
+        ])
+
+    if (!error) {
+      showToast('Te uniste al partido ✅')
+    }
 
     fetchMatch()
   }
@@ -178,11 +197,16 @@ export default function MatchDetail() {
   const leaveMatch = async () => {
     if (!userId) return
 
-    await supabase
-      .from('match_players')
-      .delete()
-      .eq('match_id', matchId)
-      .eq('user_id', userId)
+    const { error } =
+      await supabase
+        .from('match_players')
+        .delete()
+        .eq('match_id', matchId)
+        .eq('user_id', userId)
+
+    if (!error) {
+      showToast('Saliste del partido')
+    }
 
     fetchMatch()
   }
@@ -243,24 +267,43 @@ export default function MatchDetail() {
     )
 
   return (
-    <ScrollView
-      style={styles.container}
-      contentContainerStyle={{
-        padding: 16,
-      }}
-    >
-      <TouchableOpacity
-        onPress={() =>
-          router.back()
-        }
-        style={styles.back}
-      >
-        <Ionicons
-          name="arrow-back"
-          size={26}
-        />
-      </TouchableOpacity>
+    <View style={styles.container}>
+      <View style={styles.header}>
+        <TouchableOpacity
+          onPress={() =>
+            safeBack(router, '/(tabs)/matches')
+          }
+        >
+          <Ionicons
+            name="arrow-back"
+            size={24}
+            color="white"
+          />
+        </TouchableOpacity>
 
+        <Text
+          style={styles.headerTitle}
+          numberOfLines={1}
+        >
+          {match.club_name}
+        </Text>
+
+        <View style={{ width: 24 }} />
+      </View>
+
+      {toast && (
+        <View style={styles.toast}>
+          <Text style={styles.toastText}>
+            {toast}
+          </Text>
+        </View>
+      )}
+
+      <ScrollView
+        contentContainerStyle={{
+          padding: 16,
+        }}
+      >
       {/* CARD INFO */}
       <View style={styles.card}>
         <Text style={styles.title}>
@@ -450,7 +493,8 @@ export default function MatchDetail() {
             : 'Unirme al Partido'}
         </Text>
       </TouchableOpacity>
-    </ScrollView>
+      </ScrollView>
+    </View>
   )
 }
 
@@ -484,8 +528,48 @@ const styles =
       alignItems: 'center',
     },
 
-    back: {
-      marginBottom: 10,
+    header: {
+      backgroundColor:
+        '#0a0a23',
+      paddingTop: 55,
+      paddingBottom: 18,
+      paddingHorizontal: 18,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent:
+        'space-between',
+    },
+
+    headerTitle: {
+      color: 'white',
+      fontSize: 18,
+      fontWeight: 'bold',
+      flex: 1,
+      textAlign: 'center',
+      marginHorizontal: 8,
+    },
+
+    toast: {
+      position: 'absolute',
+      top: 100,
+      right: 16,
+      maxWidth: '75%',
+      backgroundColor:
+        '#0a0a23',
+      paddingVertical: 10,
+      paddingHorizontal: 16,
+      borderRadius: 10,
+      shadowColor: '#000',
+      shadowOpacity: 0.2,
+      shadowRadius: 6,
+      elevation: 6,
+      zIndex: 10,
+    },
+
+    toastText: {
+      color: 'white',
+      fontWeight: '600',
+      fontSize: 13,
     },
 
     card: {

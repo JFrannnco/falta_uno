@@ -13,7 +13,7 @@ import { supabase } from '../../lib/supabase'
 import { showMessage } from '../../lib/utils'
 import DateTimePicker from '@react-native-community/datetimepicker'
 import { Picker } from '@react-native-picker/picker'
-import { GooglePlacesAutocomplete } from 'react-native-google-places-autocomplete'
+import LocationAutocomplete from '../../components/location-autocomplete'
 
 export default function CreateMatch() {
   const router = useRouter()
@@ -241,13 +241,14 @@ export default function CreateMatch() {
 
     showMessage(
       'Éxito',
-      'Partido creado 🎉'
-    )
+      'Partido creado 🎉',
+      () => {
+        resetForm()
 
-    resetForm()
-
-    router.replace(
-      `/match/${data.id}`
+        router.replace(
+          `/match/${data.id}`
+        )
+      }
     )
   }
 
@@ -326,66 +327,19 @@ export default function CreateMatch() {
                 style={styles.input}
               />
             ) : (
-              <GooglePlacesAutocomplete
+              <LocationAutocomplete
                 placeholder="Buscar dirección..."
-                fetchDetails
-                minLength={2}
-                debounce={400}
-                enablePoweredByContainer={false}
-                listViewDisplayed="auto"
-                disableScroll
-                onPress={(
-                  data,
-                  details = null
+                initialValue={location}
+                onSelect={(
+                  description,
+                  lat,
+                  lng
                 ) => {
                   setLocation(
-                    data.description
+                    description
                   )
-
-                  setLatitude(
-                    details
-                      ?.geometry
-                      ?.location
-                      .lat ||
-                      null
-                  )
-
-                  setLongitude(
-                    details
-                      ?.geometry
-                      ?.location
-                      .lng ||
-                      null
-                  )
-                }}
-                query={{
-                  key: 'AIzaSyAhCjsVFGny1IAb7ZwTNNWHt3n9xLdd16k',
-                  language:
-                    'es',
-                  components:
-                    'country:py',
-                }}
-                styles={{
-                  textInput: {
-                    backgroundColor:
-                      '#f8f8f8',
-                    borderRadius: 12,
-                    paddingHorizontal: 14,
-                    height: 52,
-                    fontSize: 15,
-                    borderWidth: 1,
-                    borderColor:
-                      '#e6e6e6',
-                  },
-                  listView: {
-                    backgroundColor:
-                      'white',
-                    borderRadius: 12,
-                    marginTop: 5,
-                    borderWidth: 1,
-                    borderColor:
-                      '#eee',
-                  },
+                  setLatitude(lat)
+                  setLongitude(lng)
                 }}
               />
             )}

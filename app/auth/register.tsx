@@ -10,7 +10,7 @@ import {
   StyleSheet,
 } from 'react-native'
 import { supabase } from '../../lib/supabase'
-import { showMessage } from '../../lib/utils'
+import { showMessage, safeBack } from '../../lib/utils'
 import { useRouter } from 'expo-router'
 
 export default function Register() {
@@ -105,11 +105,11 @@ export default function Register() {
         ) {
           showMessage(
             'Ya estás registrado',
-            'Intentá iniciar sesión 🔐'
-          )
-
-          router.replace(
-            '/auth/login'
+            'Intentá iniciar sesión 🔐',
+            () =>
+              router.replace(
+                '/auth/login'
+              )
           )
 
           return
@@ -128,11 +128,11 @@ export default function Register() {
 
         showMessage(
           'Revisá tu email 📩',
-          'Te enviamos un correo para confirmar tu cuenta'
-        )
-
-        router.replace(
-          '/auth/login'
+          'Te enviamos un correo para confirmar tu cuenta',
+          () =>
+            router.replace(
+              '/auth/login'
+            )
         )
       } catch (error) {
         showMessage(
@@ -164,7 +164,7 @@ export default function Register() {
         {/* BACK */}
         <TouchableOpacity
           onPress={() =>
-            router.back()
+            safeBack(router, '/auth/login')
           }
           style={
             styles.backButton

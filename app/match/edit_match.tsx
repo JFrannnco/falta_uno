@@ -19,10 +19,11 @@ import {
 import { Picker } from '@react-native-picker/picker'
 
 import { supabase } from '../../lib/supabase'
-import { showMessage } from '../../lib/utils'
+import { showMessage, safeBack } from '../../lib/utils'
 
 import {
   getSelectedLocation,
+  getSelectedCoords,
   clearSelectedLocation,
 } from '../../lib/locationStore'
 
@@ -38,6 +39,8 @@ export default function EditMatch() {
   const [club, setClub] = useState('')
   const [court, setCourt] = useState('')
   const [location, setLocation] = useState('')
+  const [latitude, setLatitude] = useState<number | null>(null)
+  const [longitude, setLongitude] = useState<number | null>(null)
   const [playersNeeded, setPlayersNeeded] = useState('4')
 
   const [categories, setCategories] = useState<any[]>([])
@@ -59,7 +62,11 @@ export default function EditMatch() {
     const loc = getSelectedLocation()
 
     if (loc) {
+      const coords = getSelectedCoords()
+
       setLocation(loc)
+      setLatitude(coords.latitude)
+      setLongitude(coords.longitude)
       clearSelectedLocation()
     }
   })
@@ -104,6 +111,8 @@ export default function EditMatch() {
         setClub(match.club_name || '')
         setCourt(match.court || '')
         setLocation(match.location || '')
+        setLatitude(match.latitude ?? null)
+        setLongitude(match.longitude ?? null)
         setPlayersNeeded(
           String(match.players_needed || 4)
         )
@@ -168,9 +177,11 @@ export default function EditMatch() {
         club_name: club.trim(),
         court: court.trim(),
         location: location.trim(),
+        latitude,
+        longitude,
         players_needed: newLimit,
-        category_id: Number(categoryId),
-        modality_id: Number(modalityId),
+        category_id: categoryId,
+        modality_id: modalityId,
       }
 
       console.log('PAYLOAD:', payload)
@@ -203,10 +214,10 @@ export default function EditMatch() {
 
       showMessage(
         'Éxito',
-        'Partido actualizado'
+        'Partido actualizado',
+        () =>
+          safeBack(router, '/match/my_matches')
       )
-
-      router.back()
     } catch (err) {
       console.log(err)
 
@@ -269,7 +280,9 @@ export default function EditMatch() {
       {/* HEADER */}
       <View style={styles.header}>
         <TouchableOpacity
-          onPress={() => router.back()}
+          onPress={() =>
+            safeBack(router, '/match/my_matches')
+          }
         >
           <Text style={styles.back}>←</Text>
         </TouchableOpacity>

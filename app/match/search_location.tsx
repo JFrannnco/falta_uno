@@ -14,11 +14,13 @@ import {
   useLocalSearchParams,
 } from 'expo-router'
 
-import { GooglePlacesAutocomplete } from 'react-native-google-places-autocomplete'
+import LocationAutocomplete from '../../components/location-autocomplete'
 
 import {
   setSelectedLocation,
 } from '../../lib/locationStore'
+
+import { safeBack } from '../../lib/utils'
 
 export default function SearchLocation() {
   const router = useRouter()
@@ -34,7 +36,7 @@ export default function SearchLocation() {
 
     setSelectedLocation(manualLocation)
 
-    router.back()
+    safeBack(router)
   }
 
   return (
@@ -49,7 +51,7 @@ export default function SearchLocation() {
         {/* HEADER */}
         <View style={styles.header}>
           <TouchableOpacity
-            onPress={() => router.back()}
+            onPress={() => safeBack(router)}
           >
             <Text style={styles.back}>←</Text>
           </TouchableOpacity>
@@ -85,34 +87,23 @@ export default function SearchLocation() {
             </TouchableOpacity>
           </View>
         ) : (
-          <GooglePlacesAutocomplete
+          <LocationAutocomplete
             placeholder="Buscar dirección..."
-            fetchDetails
-            minLength={2}
-            debounce={300}
-            enablePoweredByContainer={false}
-            listViewDisplayed="auto"
-            nearbyPlacesAPI="GooglePlacesSearch"
-            predefinedPlaces={[]}
-            query={{
-              key: 'AIzaSyAhCjsVFGny1IAb7ZwTNNWHt3n9xLdd16k',
-              language: 'es',
-              components: 'country:py',
-            }}
-            onPress={(data) => {
+            initialValue={current}
+            autoFocus
+            inputStyle={styles.input}
+            onSelect={(
+              description,
+              lat,
+              lng
+            ) => {
               setSelectedLocation(
-                data.description
+                description,
+                lat,
+                lng
               )
 
-              router.back()
-            }}
-            textInputProps={{
-              defaultValue: current,
-              autoFocus: true,
-            }}
-            styles={{
-              textInput: styles.input,
-              listView: styles.list,
+              safeBack(router)
             }}
           />
         )}

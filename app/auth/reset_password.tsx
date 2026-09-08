@@ -81,11 +81,11 @@ export default function ResetPassword() {
 
         showMessage(
           'Éxito 🔐',
-          'Tu contraseña fue actualizada'
-        )
-
-        router.replace(
-          '/auth/login'
+          'Tu contraseña fue actualizada',
+          () =>
+            router.replace(
+              '/auth/login'
+            )
         )
       } catch (error) {
         showMessage(

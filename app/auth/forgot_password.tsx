@@ -11,7 +11,7 @@ import {
 } from 'react-native'
 import { useRouter } from 'expo-router'
 import { supabase } from '../../lib/supabase'
-import { showMessage } from '../../lib/utils'
+import { showMessage, safeBack } from '../../lib/utils'
 
 export default function ForgotPassword() {
   const router = useRouter()
@@ -141,7 +141,7 @@ export default function ForgotPassword() {
         {/* BACK */}
         <TouchableOpacity
           onPress={() =>
-            router.back()
+            safeBack(router, '/auth/login')
           }
           style={
             styles.backButton
@@ -243,7 +243,7 @@ export default function ForgotPassword() {
 
           <TouchableOpacity
             onPress={() =>
-              router.back()
+              safeBack(router, '/auth/login')
             }
           >
             <Text

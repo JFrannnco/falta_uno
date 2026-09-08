@@ -10,7 +10,7 @@ import {
 } from 'react-native'
 import { useRouter } from 'expo-router'
 import { supabase } from '../lib/supabase'
-import { showMessage } from '@/lib/utils'
+import { showMessage, safeBack } from '@/lib/utils'
 
 export default function EditProfile() {
   const router = useRouter()
@@ -34,7 +34,7 @@ export default function EditProfile() {
       const user = userData.user
 
       if (!user) {
-        router.back()
+        safeBack(router, '/auth/login')
         return
       }
 
@@ -96,8 +96,9 @@ export default function EditProfile() {
         return
       }
 
-      showMessage('Éxito', 'Perfil actualizado')
-      router.back()
+      showMessage('Éxito', 'Perfil actualizado', () =>
+        safeBack(router)
+      )
     } catch (error) {
       showMessage('Error', 'Ocurrió un error')
     } finally {
@@ -121,7 +122,7 @@ export default function EditProfile() {
     <View style={styles.container}>
       {/* HEADER */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()}>
+        <TouchableOpacity onPress={() => safeBack(router)}>
           <Text style={styles.back}>←</Text>
         </TouchableOpacity>
 
