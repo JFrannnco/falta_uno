@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   View,
   TextInput,
@@ -41,25 +41,7 @@ export default function LocationAutocomplete({
   const [loading, setLoading] = useState(false)
   const skipNextSearch = useRef(false)
 
-  useEffect(() => {
-    if (skipNextSearch.current) {
-      skipNextSearch.current = false
-      return
-    }
-
-    if (text.trim().length < 2) {
-      setPredictions([])
-      return
-    }
-
-    const timeout = setTimeout(() => {
-      searchPlaces(text)
-    }, 400)
-
-    return () => clearTimeout(timeout)
-  }, [text])
-
-  const searchPlaces = async (input: string) => {
+  const searchPlaces = useCallback(async (input: string) => {
     setLoading(true)
 
     try {
@@ -96,7 +78,33 @@ export default function LocationAutocomplete({
     } finally {
       setLoading(false)
     }
-  }
+  }, [])
+
+  useEffect(() => {
+    if (skipNextSearch.current) {
+      skipNextSearch.current = false
+      return
+    }
+
+    if (text.trim().length < 2) {
+      /*
+        No es el patrón "cargar datos al montar" que ataca esta regla — es
+        sincronizar la lista de sugerencias con el texto, que es exactamente
+        para lo que están los efectos. Sin resultados que mostrar para un
+        texto corto, se limpia; no hay forma de expresar esto sin un
+        `setState` en el cuerpo del efecto.
+      */
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setPredictions([])
+      return
+    }
+
+    const timeout = setTimeout(() => {
+      searchPlaces(text)
+    }, 400)
+
+    return () => clearTimeout(timeout)
+  }, [text, searchPlaces])
 
   const handleSelect = async (
     prediction: Prediction
@@ -123,6 +131,7 @@ export default function LocationAutocomplete({
         value={text}
         onChangeText={setText}
         placeholder={placeholder}
+        placeholderTextColor="#999"
         autoFocus={autoFocus}
         style={[styles.input, inputStyle]}
       />
@@ -162,6 +171,7 @@ const styles = StyleSheet.create({
     fontSize: 15,
     borderWidth: 1,
     borderColor: '#e6e6e6',
+    color: '#111',
   },
 
   loader: {

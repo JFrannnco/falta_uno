@@ -100,6 +100,7 @@ export default function CompleteProfile() {
       <Text>Nombre</Text>
       <TextInput
         placeholder="Ej: Juan Pérez"
+        placeholderTextColor="#999"
         value={name}
         onChangeText={setName}
         style={inputStyle}
@@ -110,6 +111,7 @@ export default function CompleteProfile() {
         <Picker
           selectedValue={categoryId}
           onValueChange={(itemValue: string) => setCategoryId(itemValue)}
+          style={{ color: '#111' }}
         >
           {categories.map((cat) => (
             <Picker.Item key={cat.id} label={cat.name} value={cat.id} />
@@ -136,6 +138,7 @@ const inputStyle = {
   borderRadius: 10,
   padding: 12,
   marginTop: 5,
+  color: '#111',
 } as const
 
 const button = {

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import {
   View,
   Text,
@@ -8,8 +8,70 @@ import {
   Alert,
   StyleSheet,
 } from 'react-native'
-import { Stack, useRouter } from 'expo-router'
+import {
+  Stack,
+  useFocusEffect,
+  useRouter,
+} from 'expo-router'
+import { Picker } from '@react-native-picker/picker'
 import { supabase } from '../../lib/supabase'
+import { distanceKm } from '../../lib/utils'
+
+/** Trae `matches` que NO estén cancelados: los que creé + los que me uní. */
+const fetchMisPartidosActivos = async (
+  userId: string
+) => {
+  const selectMatch = `
+    *,
+    categories(name),
+    modalities(name),
+    match_players(count)
+  `
+
+  /*
+    DOS CONSULTAS, NO UNA. "Mis partidos" tiene que mostrar los que creé Y
+    los que me uní sin haberlos creado. Unirse no siempre deja una fila en
+    `match_players` para el dueño (el insert de `create_match.tsx` no
+    chequea error), así que filtrar sólo por `match_players` perdería
+    partidos propios en ese caso. Se traen los dos conjuntos por separado y
+    se unen acá, sin duplicar por id.
+  */
+  const [{ data: owned }, { data: playerRows }] =
+    await Promise.all([
+      supabase
+        .from('matches')
+        .select(selectMatch)
+        .eq('owner_id', userId)
+        .neq('status', 'cancelled'),
+      supabase
+        .from('match_players')
+        .select('match_id')
+        .eq('user_id', userId),
+    ])
+
+  const joinedIds = (playerRows || [])
+    .map((r: any) => r.match_id)
+    .filter(
+      (id: any) =>
+        !(owned || []).some(
+          (m: any) => m.id === id
+        )
+    )
+
+  let joined: any[] = []
+
+  if (joinedIds.length > 0) {
+    const { data } = await supabase
+      .from('matches')
+      .select(selectMatch)
+      .in('id', joinedIds)
+      .neq('status', 'cancelled')
+
+    joined = data || []
+  }
+
+  return [...(owned || []), ...joined]
+}
 
 export default function MyMatches() {
   const router = useRouter()
@@ -17,14 +79,31 @@ export default function MyMatches() {
   const [matches, setMatches] =
     useState<any[]>([])
 
+  const [myCoords, setMyCoords] =
+    useState<{
+      latitude: number | null
+      longitude: number | null
+    }>({ latitude: null, longitude: null })
+
+  const [categories, setCategories] =
+    useState<any[]>([])
+
+  const [modalities, setModalities] =
+    useState<any[]>([])
+
+  const [categoryFilter, setCategoryFilter] =
+    useState('')
+
+  const [modalityFilter, setModalityFilter] =
+    useState('')
+
+  const [userId, setUserId] =
+    useState<string | null>(null)
+
   const [loading, setLoading] =
     useState(true)
 
-  useEffect(() => {
-    loadMatches()
-  }, [])
-
-  const loadMatches = async () => {
+  const loadMatches = useCallback(async () => {
     setLoading(true)
 
     const { data: userData } =
@@ -38,24 +117,112 @@ export default function MyMatches() {
       return
     }
 
-    const { data } =
-      await supabase
-        .from('matches')
-        .select(`
-          *,
-          categories(name),
-          modalities(name),
-          match_players(count)
-        `)
-        .eq('owner_id', user.id)
-        .order(
-          'start_time',
-          { ascending: true }
-        )
+    setUserId(user.id)
 
-    setMatches(data || [])
+    const [
+      { data: profile },
+      { data: cats },
+      { data: mods },
+      all,
+    ] = await Promise.all([
+      supabase
+        .from('profiles')
+        .select('latitude, longitude')
+        .eq('id', user.id)
+        .maybeSingle(),
+      supabase.from('categories').select('*'),
+      supabase.from('modalities').select('*'),
+      fetchMisPartidosActivos(user.id),
+    ])
+
+    setMyCoords({
+      latitude: profile?.latitude ?? null,
+      longitude: profile?.longitude ?? null,
+    })
+
+    setCategories(cats || [])
+    setModalities(mods || [])
+    setMatches(all)
     setLoading(false)
-  }
+  }, [])
+
+  /*
+    MISMO ORDEN QUE "Partidos": primero por cercanía a la ubicación del
+    perfil, y a igual distancia, por horario. Ver la nota completa en
+    `(tabs)/matches.tsx` — es el mismo criterio, no uno nuevo.
+  */
+  const visibleMatches = useMemo(() => {
+    const filtered = matches.filter((m) => {
+      if (
+        categoryFilter &&
+        String(m.category_id) !== categoryFilter
+      )
+        return false
+
+      if (
+        modalityFilter &&
+        String(m.modality_id) !== modalityFilter
+      )
+        return false
+
+      return true
+    })
+
+    const withDistance = filtered.map((m) => {
+      const hasCoords =
+        myCoords.latitude != null &&
+        myCoords.longitude != null &&
+        m.latitude != null &&
+        m.longitude != null
+
+      const distance = hasCoords
+        ? distanceKm(
+            myCoords.latitude as number,
+            myCoords.longitude as number,
+            m.latitude,
+            m.longitude
+          )
+        : null
+
+      return { ...m, _distance: distance }
+    })
+
+    return withDistance.sort((a, b) => {
+      if (a._distance == null && b._distance == null) {
+        return (
+          new Date(a.start_time).getTime() -
+          new Date(b.start_time).getTime()
+        )
+      }
+
+      if (a._distance == null) return 1
+      if (b._distance == null) return -1
+
+      if (a._distance !== b._distance) {
+        return a._distance - b._distance
+      }
+
+      return (
+        new Date(a.start_time).getTime() -
+        new Date(b.start_time).getTime()
+      )
+    })
+  }, [matches, myCoords, categoryFilter, modalityFilter])
+
+  /*
+    useFocusEffect y no useEffect: esta pantalla se abre una sola vez por
+    navegación, así que un useEffect de montaje sólo carga la primera vez. Al
+    volver de editar un partido (misma instancia de la pantalla, no un montaje
+    nuevo) la lista quedaba con los datos viejos hasta volver a entrar a
+    editar — recién ahí se veía el cambio, porque esa pantalla sí vuelve a
+    consultar por id. useFocusEffect corre cada vez que la pantalla vuelve a
+    tener foco, mismo patrón que ya usa `(tabs)/matches.tsx`.
+  */
+  useFocusEffect(
+    useCallback(() => {
+      loadMatches()
+    }, [loadMatches])
+  )
 
   const cancelMatch = (
     id: number
@@ -156,11 +323,74 @@ export default function MyMatches() {
               fontWeight:
                 '700',
             },
+          headerRight: () => (
+            <TouchableOpacity
+              onPress={() =>
+                router.push(
+                  '/match/cancelled_matches'
+                )
+              }
+            >
+              <Text
+                style={
+                  styles.headerBtn
+                }
+              >
+                Cancelados
+              </Text>
+            </TouchableOpacity>
+          ),
         }}
       />
 
+      <View style={styles.filters}>
+        <View style={styles.filterHalf}>
+          <Picker
+            selectedValue={categoryFilter}
+            onValueChange={(v) =>
+              setCategoryFilter(v)
+            }
+            style={{ color: '#111' }}
+          >
+            <Picker.Item
+              label="Todas las categorías"
+              value=""
+            />
+            {categories.map((c) => (
+              <Picker.Item
+                key={c.id}
+                label={c.name}
+                value={String(c.id)}
+              />
+            ))}
+          </Picker>
+        </View>
+
+        <View style={styles.filterHalf}>
+          <Picker
+            selectedValue={modalityFilter}
+            onValueChange={(v) =>
+              setModalityFilter(v)
+            }
+            style={{ color: '#111' }}
+          >
+            <Picker.Item
+              label="Todas las modalidades"
+              value=""
+            />
+            {modalities.map((m) => (
+              <Picker.Item
+                key={m.id}
+                label={m.name}
+                value={String(m.id)}
+              />
+            ))}
+          </Picker>
+        </View>
+      </View>
+
       <FlatList
-        data={matches}
+        data={visibleMatches}
         keyExtractor={(item) =>
           item.id.toString()
         }
@@ -195,6 +425,9 @@ export default function MyMatches() {
 
           const total =
             item.players_needed
+
+          const isOwner =
+            item.owner_id === userId
 
           return (
             <View
@@ -242,6 +475,8 @@ export default function MyMatches() {
                 {
                   item.location
                 }
+                {item._distance != null &&
+                  ` · ${item._distance.toFixed(1)} km`}
               </Text>
 
               {!!item.court && (
@@ -323,30 +558,33 @@ export default function MyMatches() {
                   </Text>
                 </TouchableOpacity>
 
-                <TouchableOpacity
-                  style={
-                    styles.editBtn
-                  }
-                  onPress={() =>
-                    router.push({
-                      pathname:
-                        '/match/edit_match',
-                      params: {
-                        id: item.id,
-                      },
-                    })
-                  }
-                >
-                  <Text
+                {isOwner && (
+                  <TouchableOpacity
                     style={
-                      styles.darkText
+                      styles.editBtn
+                    }
+                    onPress={() =>
+                      router.push({
+                        pathname:
+                          '/match/edit_match',
+                        params: {
+                          id: item.id,
+                        },
+                      })
                     }
                   >
-                    Editar
-                  </Text>
-                </TouchableOpacity>
+                    <Text
+                      style={
+                        styles.darkText
+                      }
+                    >
+                      Editar
+                    </Text>
+                  </TouchableOpacity>
+                )}
 
-                {item.status !==
+                {isOwner &&
+                  item.status !==
                   'cancelled' && (
                   <TouchableOpacity
                     style={
@@ -378,6 +616,24 @@ export default function MyMatches() {
 
 const styles =
   StyleSheet.create({
+    headerBtn: {
+      color: '#0a0a23',
+      fontWeight: '700',
+      fontSize: 14,
+      paddingRight: 16,
+    },
+
+    filters: {
+      flexDirection: 'row',
+      backgroundColor: 'white',
+      borderBottomWidth: 1,
+      borderBottomColor: '#eee',
+    },
+
+    filterHalf: {
+      flex: 1,
+    },
+
     loader: {
       flex: 1,
       justifyContent:

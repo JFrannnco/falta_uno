@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import {
   View,
   Text,
@@ -13,7 +13,9 @@ import {
   useFocusEffect,
   useRouter,
 } from 'expo-router'
+import { Picker } from '@react-native-picker/picker'
 import { supabase } from '../../lib/supabase'
+import { distanceKm } from '../../lib/utils'
 
 export default function Matches() {
   const router = useRouter()
@@ -21,13 +23,61 @@ export default function Matches() {
   const [matches, setMatches] =
     useState<any[]>([])
 
+  const [myCoords, setMyCoords] =
+    useState<{
+      latitude: number | null
+      longitude: number | null
+    }>({ latitude: null, longitude: null })
+
+  const [categories, setCategories] =
+    useState<any[]>([])
+
+  const [modalities, setModalities] =
+    useState<any[]>([])
+
+  const [categoryFilter, setCategoryFilter] =
+    useState('')
+
+  const [modalityFilter, setModalityFilter] =
+    useState('')
+
   const [loading, setLoading] =
     useState(true)
 
   const [refreshing, setRefreshing] =
     useState(false)
 
-  const loadMatches = async () => {
+  const loadMatches = useCallback(async () => {
+    const { data: userData } =
+      await supabase.auth.getUser()
+
+    const user = userData.user
+
+    if (user) {
+      const { data: profile } =
+        await supabase
+          .from('profiles')
+          .select('latitude, longitude')
+          .eq('id', user.id)
+          .maybeSingle()
+
+      setMyCoords({
+        latitude: profile?.latitude ?? null,
+        longitude: profile?.longitude ?? null,
+      })
+    }
+
+    if (!categories.length || !modalities.length) {
+      const [{ data: cats }, { data: mods }] =
+        await Promise.all([
+          supabase.from('categories').select('*'),
+          supabase.from('modalities').select('*'),
+        ])
+
+      setCategories(cats || [])
+      setModalities(mods || [])
+    }
+
     const { data, error } =
       await supabase
         .from('matches')
@@ -37,6 +87,10 @@ export default function Matches() {
           modalities(name),
           match_players(count)
         `)
+        // Un partido cancelado no se puede jugar: no tiene sentido que
+        // alguien lo encuentre acá para unirse. Se ve en la pantalla de
+        // cancelados de "Mis partidos".
+        .neq('status', 'cancelled')
         .order('start_time', {
           ascending: true,
         })
@@ -47,13 +101,78 @@ export default function Matches() {
 
     setLoading(false)
     setRefreshing(false)
-  }
+  }, [categories.length, modalities.length])
 
   useFocusEffect(
     useCallback(() => {
       loadMatches()
-    }, [])
+    }, [loadMatches])
   )
+
+  /*
+    ORDEN: primero por cercanía a la ubicación guardada del perfil (la misma que
+    `_layout.tsx` refresca al abrir la app), y a igual distancia, por horario. Un
+    partido sin coordenadas —o mientras el perfil todavía no tiene la propia—
+    queda al final del todo en vez de arriba, que sería mentir sobre qué tan
+    cerca está.
+  */
+  const visibleMatches = useMemo(() => {
+    const filtered = matches.filter((m) => {
+      if (
+        categoryFilter &&
+        String(m.category_id) !== categoryFilter
+      )
+        return false
+
+      if (
+        modalityFilter &&
+        String(m.modality_id) !== modalityFilter
+      )
+        return false
+
+      return true
+    })
+
+    const withDistance = filtered.map((m) => {
+      const hasCoords =
+        myCoords.latitude != null &&
+        myCoords.longitude != null &&
+        m.latitude != null &&
+        m.longitude != null
+
+      const distance = hasCoords
+        ? distanceKm(
+            myCoords.latitude as number,
+            myCoords.longitude as number,
+            m.latitude,
+            m.longitude
+          )
+        : null
+
+      return { ...m, _distance: distance }
+    })
+
+    return withDistance.sort((a, b) => {
+      if (a._distance == null && b._distance == null) {
+        return (
+          new Date(a.start_time).getTime() -
+          new Date(b.start_time).getTime()
+        )
+      }
+
+      if (a._distance == null) return 1
+      if (b._distance == null) return -1
+
+      if (a._distance !== b._distance) {
+        return a._distance - b._distance
+      }
+
+      return (
+        new Date(a.start_time).getTime() -
+        new Date(b.start_time).getTime()
+      )
+    })
+  }, [matches, myCoords, categoryFilter, modalityFilter])
 
   const onRefresh = () => {
     setRefreshing(true)
@@ -127,8 +246,54 @@ export default function Matches() {
         }}
       />
 
+      <View style={styles.filters}>
+        <View style={styles.filterHalf}>
+          <Picker
+            selectedValue={categoryFilter}
+            onValueChange={(v) =>
+              setCategoryFilter(v)
+            }
+            style={{ color: '#111' }}
+          >
+            <Picker.Item
+              label="Todas las categorías"
+              value=""
+            />
+            {categories.map((c) => (
+              <Picker.Item
+                key={c.id}
+                label={c.name}
+                value={String(c.id)}
+              />
+            ))}
+          </Picker>
+        </View>
+
+        <View style={styles.filterHalf}>
+          <Picker
+            selectedValue={modalityFilter}
+            onValueChange={(v) =>
+              setModalityFilter(v)
+            }
+            style={{ color: '#111' }}
+          >
+            <Picker.Item
+              label="Todas las modalidades"
+              value=""
+            />
+            {modalities.map((m) => (
+              <Picker.Item
+                key={m.id}
+                label={m.name}
+                value={String(m.id)}
+              />
+            ))}
+          </Picker>
+        </View>
+      </View>
+
       <FlatList
-        data={matches}
+        data={visibleMatches}
         keyExtractor={(item) =>
           item.id.toString()
         }
@@ -206,6 +371,8 @@ export default function Matches() {
                 {
                   item.location
                 }
+                {item._distance != null &&
+                  ` · ${item._distance.toFixed(1)} km`}
               </Text>
 
               {!!item.court && (
@@ -316,6 +483,17 @@ const styles =
         '700',
       fontSize: 14,
       paddingRight: 50,
+    },
+
+    filters: {
+      flexDirection: 'row',
+      backgroundColor: 'white',
+      borderBottomWidth: 1,
+      borderBottomColor: '#eee',
+    },
+
+    filterHalf: {
+      flex: 1,
     },
 
     empty: {

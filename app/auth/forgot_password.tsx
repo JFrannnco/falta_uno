@@ -111,7 +111,7 @@ export default function ForgotPassword() {
         setCooldown(
           60
         )
-      } catch (error) {
+      } catch {
         showMessage(
           'Error',
           'No se pudo enviar el correo'
@@ -338,6 +338,8 @@ const styles =
       padding: 14,
       marginBottom: 14,
       fontSize: 15,
+      color: '#111',
+      backgroundColor: '#fff',
     },
 
     button: {

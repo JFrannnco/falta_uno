@@ -2,19 +2,8 @@ import { Tabs } from 'expo-router'
 import { Ionicons } from '@expo/vector-icons'
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons'
 import AntDesign from '@expo/vector-icons/AntDesign'
-import {
-  TouchableOpacity,
-  Text,
-  ActivityIndicator,
-  Alert,
-  View,
-} from 'react-native'
-import { supabase } from '../../lib/supabase'
-import { useState } from 'react'
 
 export default function TabsLayout() {
-  const [loading, setLoading] = useState(false)
-
   return (
     <Tabs
       screenOptions={{

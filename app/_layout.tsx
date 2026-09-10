@@ -2,6 +2,7 @@ import {
   Stack,
   Redirect,
   useSegments,
+  usePathname,
   useRouter,
 } from 'expo-router'
 import {
@@ -14,9 +15,15 @@ import {
   View,
 } from 'react-native'
 import * as Location from 'expo-location'
+import {
+  setPendingRedirect,
+  getPendingRedirect,
+  clearPendingRedirect,
+} from '../lib/pendingRedirect'
 
 export default function RootLayout() {
   const router = useRouter()
+  const pathname = usePathname()
 
   const [loading, setLoading] =
     useState(true)
@@ -289,7 +296,7 @@ export default function RootLayout() {
     return () => {
       listener.subscription.unsubscribe()
     }
-  }, [])
+  }, [router])
 
   if (loading) {
     return (
@@ -353,6 +360,15 @@ export default function RootLayout() {
     !session &&
     !inAuth
   ) {
+    /*
+      SE GUARDA A DÓNDE IBA, no sólo que "no tenía sesión". Alguien que toca
+      un link compartido (`faltauno://match/123`) sin estar logueado cae
+      acá antes de llegar a esa pantalla — sin este guardado, después del
+      login no había forma de saber que el destino real era el partido y
+      no la lista general.
+    */
+    setPendingRedirect(pathname)
+
     return (
       <Redirect href="/auth/login" />
     )
@@ -376,8 +392,14 @@ export default function RootLayout() {
       true &&
     inCompleteProfile
   ) {
+    const destino =
+      getPendingRedirect() ||
+      '/(tabs)/matches'
+
+    clearPendingRedirect()
+
     return (
-      <Redirect href="/(tabs)/matches" />
+      <Redirect href={destino as any} />
     )
   }
 
@@ -387,8 +409,14 @@ export default function RootLayout() {
     !inResetPassword &&
     !isRecovery
   ) {
+    const destino =
+      getPendingRedirect() ||
+      '/(tabs)/matches'
+
+    clearPendingRedirect()
+
     return (
-      <Redirect href="/(tabs)/matches" />
+      <Redirect href={destino as any} />
     )
   }
 

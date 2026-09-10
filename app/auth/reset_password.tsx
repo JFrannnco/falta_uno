@@ -87,7 +87,7 @@ export default function ResetPassword() {
               '/auth/login'
             )
         )
-      } catch (error) {
+      } catch {
         showMessage(
           'Error',
           'No se pudo actualizar'
@@ -271,6 +271,8 @@ const styles =
       padding: 14,
       marginBottom: 12,
       fontSize: 15,
+      color: '#111',
+      backgroundColor: '#fff',
     },
 
     button: {

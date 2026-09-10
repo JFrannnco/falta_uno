@@ -134,7 +134,7 @@ export default function Register() {
               '/auth/login'
             )
         )
-      } catch (error) {
+      } catch {
         showMessage(
           'Error',
           'Ocurrió un error'
@@ -380,6 +380,8 @@ const styles =
       padding: 14,
       marginBottom: 12,
       fontSize: 15,
+      color: '#111',
+      backgroundColor: '#fff',
     },
 
     button: {

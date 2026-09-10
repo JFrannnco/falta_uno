@@ -21,6 +21,7 @@ export default function CreateMatch() {
   const [club, setClub] = useState('')
   const [court, setCourt] = useState('')
   const [location, setLocation] = useState('')
+  const [revaLink, setRevaLink] = useState('')
 
   const [latitude, setLatitude] =
     useState<number | null>(null)
@@ -66,10 +67,6 @@ export default function CreateMatch() {
     '22:00','22:30',
   ]
 
-  useEffect(() => {
-    loadData()
-  }, [])
-
   const loadData = async () => {
     const { data: cats } =
       await supabase
@@ -90,6 +87,20 @@ export default function CreateMatch() {
     if (mods?.length)
       setModalityId(mods[0].id)
   }
+
+  /*
+    `loadData` trae categorías/modalidades una sola vez al montar la
+    pantalla — el patrón de carga inicial que usa toda la app (ver también
+    `match/[id].tsx`, `match/edit_match.tsx`). La regla `set-state-in-effect`
+    lo marca porque termina llamando `setState`, pero no hay ningún
+    "sistema externo" que sincronizar acá: es la carga inicial de datos, y
+    reescribir esto a otro patrón (Suspense, una librería de fetching) es
+    un cambio de arquitectura que excede el alcance de este ajuste puntual.
+  */
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    loadData()
+  }, [])
 
   const getEndTime = () => {
     const [h, m] =
@@ -123,6 +134,7 @@ export default function CreateMatch() {
     setClub('')
     setCourt('')
     setLocation('')
+    setRevaLink('')
     setLatitude(null)
     setLongitude(null)
     setPlayers('4')
@@ -152,13 +164,32 @@ export default function CreateMatch() {
       return
     }
 
-    if (
-      !club.trim() ||
-      !location.trim()
-    ) {
+    /*
+      OBLIGATORIOS: complejo, ubicación, categoría y modalidad. Cancha y el
+      link de Reva quedan afuera a propósito — son datos que no siempre se
+      tienen a mano al armar el partido rápido, y no hacen falta para que
+      el partido tenga sentido. Complejo y ubicación son texto libre y
+      pueden quedar vacíos; categoría y modalidad vienen de un picker con
+      default, pero si `loadData` no llegó a traer catálogos (sin conexión,
+      por ejemplo) quedan en '' y hoy se mandaría un partido sin categoría
+      ni modalidad sin avisar. Jugadores, fecha, hora y duración no se
+      validan acá porque sus pickers siempre tienen un valor cargado — no
+      hay forma de dejarlos vacíos desde la UI.
+    */
+    const faltantes: string[] = []
+
+    if (!club.trim()) faltantes.push('Complejo')
+    if (!location.trim())
+      faltantes.push('Ubicación')
+    if (!categoryId)
+      faltantes.push('Categoría')
+    if (!modalityId)
+      faltantes.push('Modalidad')
+
+    if (faltantes.length > 0) {
       showMessage(
         'Error',
-        'Completá complejo y ubicación'
+        `Completá estos campos: ${faltantes.join(', ')}`
       )
       return
     }
@@ -196,6 +227,8 @@ export default function CreateMatch() {
             location,
             address:
               location,
+            reva_link:
+              revaLink.trim() || null,
             latitude,
             longitude,
             players_needed:
@@ -286,13 +319,14 @@ export default function CreateMatch() {
             <View style={styles.row}>
               <View style={styles.half}>
                 <Text style={styles.label}>
-                  Complejo
+                  Complejo *
                 </Text>
 
                 <TextInput
                   value={club}
                   onChangeText={setClub}
                   placeholder="El Spot"
+                  placeholderTextColor="#999"
                   style={styles.input}
                 />
               </View>
@@ -306,6 +340,7 @@ export default function CreateMatch() {
                   value={court}
                   onChangeText={setCourt}
                   placeholder="3"
+                  placeholderTextColor="#999"
                   style={styles.input}
                 />
               </View>
@@ -313,7 +348,7 @@ export default function CreateMatch() {
 
             {/* UBICACION */}
             <Text style={styles.label}>
-              Ubicación
+              Ubicación *
             </Text>
 
             {Platform.OS ===
@@ -324,6 +359,7 @@ export default function CreateMatch() {
                   setLocation
                 }
                 placeholder="Dirección del complejo"
+                placeholderTextColor="#999"
                 style={styles.input}
               />
             ) : (
@@ -343,6 +379,21 @@ export default function CreateMatch() {
                 }}
               />
             )}
+
+            {/* LINK DE RESERVA (RVA/RESERVA, OPCIONAL) */}
+            <Text style={styles.label}>
+              Link de Reva (opcional)
+            </Text>
+
+            <TextInput
+              value={revaLink}
+              onChangeText={setRevaLink}
+              placeholder="https://reva.la/..."
+              placeholderTextColor="#999"
+              autoCapitalize="none"
+              keyboardType="url"
+              style={styles.input}
+            />
 
             {/* FECHA */}
             <Text style={styles.label}>
@@ -390,6 +441,7 @@ export default function CreateMatch() {
                     onValueChange={
                       setStartTime
                     }
+                    style={{ color: '#111' }}
                   >
                     {hours.map(
                       (h) => (
@@ -417,6 +469,7 @@ export default function CreateMatch() {
                     onValueChange={
                       setDuration
                     }
+                    style={{ color: '#111' }}
                   >
                     <Picker.Item
                       label="30m"
@@ -457,6 +510,7 @@ export default function CreateMatch() {
                 onValueChange={
                   setPlayers
                 }
+                style={{ color: '#111' }}
               >
                 <Picker.Item label="4" value="4" />
                 <Picker.Item label="5" value="5" />
@@ -470,7 +524,7 @@ export default function CreateMatch() {
             <View style={styles.row}>
               <View style={styles.half}>
                 <Text style={styles.label}>
-                  Categoría
+                  Categoría *
                 </Text>
 
                 <View style={styles.input}>
@@ -481,6 +535,7 @@ export default function CreateMatch() {
                     onValueChange={
                       setCategoryId
                     }
+                    style={{ color: '#111' }}
                   >
                     {categories.map(
                       (c) => (
@@ -497,7 +552,7 @@ export default function CreateMatch() {
 
               <View style={styles.half}>
                 <Text style={styles.label}>
-                  Modalidad
+                  Modalidad *
                 </Text>
 
                 <View style={styles.input}>
@@ -508,6 +563,7 @@ export default function CreateMatch() {
                     onValueChange={
                       setModalityId
                     }
+                    style={{ color: '#111' }}
                   >
                     {modalities.map(
                       (m) => (
@@ -620,6 +676,7 @@ const styles =
       borderWidth: 1,
       borderColor:
         '#e6e6e6',
+      color: '#111',
     },
 
     endText: {

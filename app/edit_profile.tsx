@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import {
   View,
   Text,
@@ -24,11 +24,7 @@ export default function EditProfile() {
   const [categories, setCategories] = useState<any[]>([])
   const [showCategories, setShowCategories] = useState(false)
 
-  useEffect(() => {
-    loadData()
-  }, [])
-
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     try {
       const { data: userData } = await supabase.auth.getUser()
       const user = userData.user
@@ -57,12 +53,19 @@ export default function EditProfile() {
         .order('id', { ascending: true })
 
       setCategories(cats || [])
-    } catch (error) {
+    } catch {
       showMessage('Error', 'No se pudo cargar el perfil')
     } finally {
       setLoading(false)
     }
-  }
+  }, [router])
+
+  // Carga inicial al montar — mismo patrón que el resto de la app, ver la
+  // nota completa en `(tabs)/create_match.tsx`.
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    loadData()
+  }, [loadData])
 
   const handleSave = async () => {
     if (!name.trim()) {
@@ -99,7 +102,7 @@ export default function EditProfile() {
       showMessage('Éxito', 'Perfil actualizado', () =>
         safeBack(router)
       )
-    } catch (error) {
+    } catch {
       showMessage('Error', 'Ocurrió un error')
     } finally {
       setSaving(false)
@@ -143,6 +146,7 @@ export default function EditProfile() {
             value={name}
             onChangeText={setName}
             placeholder="Tu nombre"
+            placeholderTextColor="#999"
             style={styles.input}
           />
 
@@ -261,6 +265,7 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     padding: 14,
     backgroundColor: '#fff',
+    color: '#111',
   },
 
   select: {

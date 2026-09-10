@@ -84,7 +84,7 @@ export default function Profile() {
         'Sesión cerrada',
         'Hasta luego 👋'
       )
-    } catch (error) {
+    } catch {
       showMessage(
         'Error',
         'Ocurrió un error'

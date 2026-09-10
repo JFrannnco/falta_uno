@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React, { useCallback, useEffect, useState } from 'react'
 import {
   View,
   Text,
@@ -6,11 +6,14 @@ import {
   TouchableOpacity,
   ScrollView,
   StyleSheet,
+  Linking,
+  Share,
 } from 'react-native'
 import {
   useLocalSearchParams,
   useRouter,
 } from 'expo-router'
+import { createURL } from 'expo-linking'
 import { supabase } from '../../lib/supabase'
 import { safeBack } from '../../lib/utils'
 import { Ionicons } from '@expo/vector-icons'
@@ -33,6 +36,7 @@ type Match = {
   players_needed: number
   start_time: string
   end_time: string
+  reva_link?: string | null
   categories?: {
     name: string
   }
@@ -60,14 +64,6 @@ export default function MatchDetail() {
   const [toast, setToast] =
     useState<string | null>(null)
 
-  useEffect(() => {
-    getUser()
-  }, [])
-
-  useEffect(() => {
-    fetchMatch()
-  }, [matchId])
-
   const getUser = async () => {
     const { data } =
       await supabase.auth.getUser()
@@ -75,7 +71,7 @@ export default function MatchDetail() {
     setUserId(data.user?.id || null)
   }
 
-  const fetchMatch = async () => {
+  const fetchMatch = useCallback(async () => {
     try {
       setLoading(true)
 
@@ -146,7 +142,23 @@ export default function MatchDetail() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [matchId])
+
+  /*
+    Carga inicial al montar (usuario + partido) — mismo patrón que el resto
+    de la app, ver la nota completa en `(tabs)/create_match.tsx`. No hay
+    "sistema externo" que sincronizar, es simplemente traer los datos una
+    vez que la pantalla existe.
+  */
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    getUser()
+  }, [])
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    fetchMatch()
+  }, [fetchMatch])
 
   const isJoined =
     match?.match_players?.some(
@@ -176,6 +188,63 @@ export default function MatchDetail() {
       match.players_needed
     )
       return
+
+    /*
+      NO DEJAR UNIRSE A DOS PARTIDOS QUE SE PISAN EN HORARIO. Se trae la lista
+      de partidos (activos, sin contar este mismo) a los que la persona ya
+      está anotada, y se compara el rango [start_time, end_time) de cada uno
+      contra el del partido que está por unirse. Se hace acá, no en la base,
+      porque todavía no hay ninguna restricción/trigger que lo impida del
+      lado de Postgres.
+    */
+    const { data: myRows } =
+      await supabase
+        .from('match_players')
+        .select(
+          'matches(id, start_time, end_time, status)'
+        )
+        .eq('user_id', userId)
+
+    const newStart = new Date(
+      match.start_time
+    ).getTime()
+
+    const newEnd = new Date(
+      match.end_time
+    ).getTime()
+
+    const overlaps = (
+      myRows || []
+    ).some((row: any) => {
+      const other = row.matches
+
+      if (
+        !other ||
+        other.id === matchId ||
+        other.status === 'cancelled'
+      )
+        return false
+
+      const otherStart = new Date(
+        other.start_time
+      ).getTime()
+
+      const otherEnd = new Date(
+        other.end_time
+      ).getTime()
+
+      return (
+        otherStart < newEnd &&
+        otherEnd > newStart
+      )
+    })
+
+    if (overlaps) {
+      showToast(
+        'Ya estás anotado en otro partido a esa hora'
+      )
+      return
+    }
 
     const { error } =
       await supabase
@@ -266,6 +335,42 @@ export default function MatchDetail() {
       }
     )
 
+  /*
+    `createURL` (expo-linking) arma el link correcto según dónde corre la
+    app: `exp://...` en desarrollo, `faltauno://...` en un build instalado.
+    Hoy —sin APK todavía— ese link no abre nada del otro lado, pero el
+    texto y el flujo de compartir ya quedan listos para cuando exista un
+    build real: no hay que tocar esta pantalla de nuevo, solo instalar la
+    app y el mismo link empieza a funcionar.
+  */
+  const shareMatch = async () => {
+    const link = createURL(
+      `/match/${matchId}`
+    )
+
+    const cupos =
+      faltan > 0
+        ? `Faltan ${faltan} jugador${
+            faltan === 1 ? '' : 'es'
+          } 🙋`
+        : 'Partido completo'
+
+    const mensaje =
+      `🏓 ${match.club_name}\n` +
+      `📍 ${match.location}\n` +
+      `📅 ${fecha} • 🕒 ${horaInicio} - ${horaFin}\n` +
+      `${cupos}\n\n` +
+      `Sumate desde Falta Uno:\n${link}`
+
+    try {
+      await Share.share({
+        message: mensaje,
+      })
+    } catch (error) {
+      console.log(error)
+    }
+  }
+
   return (
     <View style={styles.container}>
       <View style={styles.header}>
@@ -288,7 +393,15 @@ export default function MatchDetail() {
           {match.club_name}
         </Text>
 
-        <View style={{ width: 24 }} />
+        <TouchableOpacity
+          onPress={shareMatch}
+        >
+          <Ionicons
+            name="share-social-outline"
+            size={24}
+            color="white"
+          />
+        </TouchableOpacity>
       </View>
 
       {toast && (
@@ -327,6 +440,7 @@ export default function MatchDetail() {
                 styles.badgeText
               }
             >
+              Categoría:{' '}
               {match
                 .categories
                 ?.name ||
@@ -344,6 +458,7 @@ export default function MatchDetail() {
                 styles.badgeText
               }
             >
+              Modalidad:{' '}
               {match
                 .modalities
                 ?.name ||
@@ -370,6 +485,21 @@ export default function MatchDetail() {
           label="👥 Jugadores"
           value={`${current} de ${match.players_needed}`}
         />
+
+        {!!match.reva_link && (
+          <TouchableOpacity
+            style={styles.revaBtn}
+            onPress={() =>
+              Linking.openURL(
+                match.reva_link as string
+              )
+            }
+          >
+            <Text style={styles.revaBtnText}>
+              Ver / reservar en Reva
+            </Text>
+          </TouchableOpacity>
+        )}
       </View>
 
       {/* PLAYERS */}
@@ -622,6 +752,21 @@ const styles =
       backgroundColor:
         '#eee',
       marginVertical: 12,
+    },
+
+    revaBtn: {
+      marginTop: 12,
+      alignSelf: 'flex-start',
+      backgroundColor: '#eef2ff',
+      paddingVertical: 8,
+      paddingHorizontal: 14,
+      borderRadius: 10,
+    },
+
+    revaBtnText: {
+      color: '#0a0a23',
+      fontWeight: '700',
+      fontSize: 13,
     },
 
     section: {

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import {
   View,
   Text,
@@ -39,6 +39,7 @@ export default function EditMatch() {
   const [club, setClub] = useState('')
   const [court, setCourt] = useState('')
   const [location, setLocation] = useState('')
+  const [revaLink, setRevaLink] = useState('')
   const [latitude, setLatitude] = useState<number | null>(null)
   const [longitude, setLongitude] = useState<number | null>(null)
   const [playersNeeded, setPlayersNeeded] = useState('4')
@@ -51,27 +52,7 @@ export default function EditMatch() {
 
   const [players, setPlayers] = useState<any[]>([])
 
-  useEffect(() => {
-    if (!id) return
-
-    loadData()
-  }, [id])
-
-  // 🔥 FIX ubicación
-  useFocusEffect(() => {
-    const loc = getSelectedLocation()
-
-    if (loc) {
-      const coords = getSelectedCoords()
-
-      setLocation(loc)
-      setLatitude(coords.latitude)
-      setLongitude(coords.longitude)
-      clearSelectedLocation()
-    }
-  })
-
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     try {
       if (!id) return
 
@@ -95,6 +76,16 @@ export default function EditMatch() {
         .from('modalities')
         .select('*')
 
+      /*
+        SIN FILTRAR POR STATUS. `match_players` no tiene un estado "me fui" —
+        salir del partido borra la fila entera (ver `leaveMatch` en
+        match/[id].tsx) — así que toda fila acá es alguien que sigue anotado,
+        sea que llegó por "Unirme al partido" (`status: 'joined'`, el default
+        de la columna) o por el auto-alta del dueño al crear el partido
+        (`status: 'confirmed'`, ver create_match.tsx). Filtrar por
+        `confirmed` dejaba afuera a cualquiera que se hubiera anotado por el
+        botón normal — la pantalla parecía no tener jugadores.
+      */
       const { data: joined } = await supabase
         .from('match_players')
         .select(`
@@ -105,12 +96,12 @@ export default function EditMatch() {
           )
         `)
         .eq('match_id', id)
-        .eq('status', 'confirmed')
 
       if (match) {
         setClub(match.club_name || '')
         setCourt(match.court || '')
         setLocation(match.location || '')
+        setRevaLink(match.reva_link || '')
         setLatitude(match.latitude ?? null)
         setLongitude(match.longitude ?? null)
         setPlayersNeeded(
@@ -139,7 +130,30 @@ export default function EditMatch() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [id])
+
+  // Carga inicial al montar/cambiar de id — mismo patrón que el resto de
+  // la app, ver la nota completa en `(tabs)/create_match.tsx`.
+  useEffect(() => {
+    if (!id) return
+
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    loadData()
+  }, [id, loadData])
+
+  // 🔥 FIX ubicación
+  useFocusEffect(() => {
+    const loc = getSelectedLocation()
+
+    if (loc) {
+      const coords = getSelectedCoords()
+
+      setLocation(loc)
+      setLatitude(coords.latitude)
+      setLongitude(coords.longitude)
+      clearSelectedLocation()
+    }
+  })
 
   const saveMatch = async () => {
     try {
@@ -177,6 +191,7 @@ export default function EditMatch() {
         club_name: club.trim(),
         court: court.trim(),
         location: location.trim(),
+        reva_link: revaLink.trim() || null,
         latitude,
         longitude,
         players_needed: newLimit,
@@ -349,6 +364,20 @@ export default function EditMatch() {
           </TouchableOpacity>
 
           <Text style={styles.label}>
+            Link de Reva (opcional)
+          </Text>
+
+          <TextInput
+            value={revaLink}
+            onChangeText={setRevaLink}
+            placeholder="https://reva.la/..."
+            placeholderTextColor="#999"
+            autoCapitalize="none"
+            keyboardType="url"
+            style={styles.input}
+          />
+
+          <Text style={styles.label}>
             Jugadores
           </Text>
 
@@ -356,6 +385,7 @@ export default function EditMatch() {
             <Picker
               selectedValue={playersNeeded}
               onValueChange={setPlayersNeeded}
+              style={{ color: '#111' }}
             >
               {[
                 '4',
@@ -381,6 +411,7 @@ export default function EditMatch() {
             <Picker
               selectedValue={categoryId}
               onValueChange={setCategoryId}
+              style={{ color: '#111' }}
             >
               {categories.map((c) => (
                 <Picker.Item
@@ -400,6 +431,7 @@ export default function EditMatch() {
             <Picker
               selectedValue={modalityId}
               onValueChange={setModalityId}
+              style={{ color: '#111' }}
             >
               {modalities.map((m) => (
                 <Picker.Item
@@ -531,6 +563,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
     height: 52,
     justifyContent: 'center',
+    color: '#111',
   },
 
   saveBtn: {
