@@ -5,7 +5,9 @@ import { SymbolWeight, SymbolViewProps } from 'expo-symbols';
 import { ComponentProps } from 'react';
 import { OpaqueColorValue, type StyleProp, type TextStyle } from 'react-native';
 
-type IconMapping = Record<SymbolViewProps['name'], ComponentProps<typeof MaterialIcons>['name']>;
+// `SymbolViewProps['name']` ahora admite además un objeto { ios?, android?, web? } por símbolo
+// (SDK 57); acá solo interesa la variante de nombre plano (string) para el mapeo a Material Icons.
+type IconMapping = Record<Extract<SymbolViewProps['name'], string>, ComponentProps<typeof MaterialIcons>['name']>;
 type IconSymbolName = keyof typeof MAPPING;
 
 /**
